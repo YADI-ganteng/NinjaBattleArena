@@ -1,0 +1,332 @@
+name: Build APK Final
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Install Android SDK MANUAL
+      run: |
+        # Download cmdline-tools
+        SDK=$HOME/android-sdk
+        mkdir -p $SDK
+        cd $SDK
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        unzip -q commandlinetools-linux-11076708_latest.zip
+        
+        # Install SDK packages
+        yes | cmdline-tools/bin/sdkmanager --sdk_root=$SDK --licenses 2>/dev/null
+        cmdline-tools/bin/sdkmanager --sdk_root=$SDK \
+          "platform-tools" \
+          "platforms;android-33" \
+          "build-tools;33.0.0" 2>/dev/null
+        
+        # Verify installation
+        echo "=== ANDROID SDK VERIFICATION ==="
+        ls -la $SDK/platforms/android-33/android.jar
+        ls -la $SDK/build-tools/33.0.0/aapt*
+        
+        # Set environment
+        echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
+    
+    - name: Create & Build Project
+      run: |
+        # Create local.properties with SDK path
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        
+        # settings.gradle
+        cat > settings.gradle << 'EOF'
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        rootProject.name = "NinjaBattle"
+        include ':app'
+        EOF
+        
+        # Root build.gradle
+        cat > build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application' version '8.2.0' apply false
+        }
+        EOF
+        
+        # gradle-wrapper.properties
+        mkdir -p gradle/wrapper
+        cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        EOF
+        
+        # gradle.properties
+        cat > gradle.properties << 'EOF'
+        android.useAndroidX=true
+        org.gradle.jvmargs=-Xmx2048m
+        EOF
+        
+        # App build.gradle
+        mkdir -p app/src/main/java/com/ninja/battle
+        mkdir -p app/src/main/res/values
+        mkdir -p app/src/main/res/drawable
+        
+        cat > app/build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application'
+        }
+        android {
+            namespace 'com.ninja.battle'
+            compileSdk 33
+            defaultConfig {
+                applicationId "com.ninja.battle"
+                minSdk 21
+                targetSdk 33
+                versionCode 1
+                versionName "1.0"
+            }
+            buildTypes {
+                debug {
+                    debuggable true
+                }
+                release {
+                    minifyEnabled false
+                }
+            }
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
+        }
+        EOF
+        
+        # AndroidManifest
+        cat > app/src/main/AndroidManifest.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application
+                android:label="Ninja Battle Arena"
+                android:allowBackup="true"
+                android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:screenOrientation="landscape"
+                    android:configChanges="orientation|screenSize">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+        
+        # strings.xml
+        cat > app/src/main/res/values/strings.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <string name="app_name">Ninja Battle Arena</string>
+        </resources>
+        EOF
+        
+        # MainActivity.java
+        cat > app/src/main/java/com/ninja/battle/MainActivity.java << 'EOF'
+        package com.ninja.battle;
+        import android.app.Activity;
+        import android.os.Bundle;
+        import android.os.Handler;
+        import android.view.*;
+        import android.widget.*;
+        import android.graphics.*;
+        import java.util.*;
+        
+        public class MainActivity extends Activity {
+            private float pHP=500, eHP=500;
+            private int time=99;
+            private boolean over=false;
+            private Handler h=new Handler();
+            private Random r=new Random();
+            private ProgressBar pHPBar, eHPBar;
+            private TextView timerText, logText;
+            
+            @Override
+            protected void onCreate(Bundle s) {
+                super.onCreate(s);
+                requestWindowFeature(1);
+                getWindow().setFlags(1024,1024);
+                
+                LinearLayout main = new LinearLayout(this);
+                main.setOrientation(1);
+                main.setBackgroundColor(Color.parseColor("#0a0a1a"));
+                main.setGravity(17);
+                
+                // Title
+                TextView title = new TextView(this);
+                title.setText("NINJA BATTLE ARENA");
+                title.setTextSize(28);
+                title.setTextColor(Color.parseColor("#ff6b35"));
+                title.setTypeface(null, Typeface.BOLD);
+                title.setGravity(17);
+                title.setPadding(0,20,0,30);
+                main.addView(title);
+                
+                // Battle info
+                LinearLayout info = new LinearLayout(this);
+                info.setOrientation(0);
+                info.setGravity(17);
+                
+                TextView pLabel = new TextView(this);
+                pLabel.setText("YOU  ");
+                pLabel.setTextColor(Color.GREEN);
+                pLabel.setTextSize(16);
+                info.addView(pLabel);
+                
+                pHPBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                pHPBar.setMax(500);
+                pHPBar.setProgress(500);
+                pHPBar.setLayoutParams(new LinearLayout.LayoutParams(200,40));
+                pHPBar.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.GREEN));
+                info.addView(pHPBar);
+                
+                timerText = new TextView(this);
+                timerText.setText("  ⏱99  ");
+                timerText.setTextColor(Color.WHITE);
+                timerText.setTextSize(18);
+                info.addView(timerText);
+                
+                eHPBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                eHPBar.setMax(500);
+                eHPBar.setProgress(500);
+                eHPBar.setLayoutParams(new LinearLayout.LayoutParams(200,40));
+                eHPBar.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.RED));
+                info.addView(eHPBar);
+                
+                TextView eLabel = new TextView(this);
+                eLabel.setText("  ENEMY");
+                eLabel.setTextColor(Color.RED);
+                eLabel.setTextSize(16);
+                info.addView(eLabel);
+                
+                main.addView(info);
+                
+                // Arena (touch area)
+                View arena = new View(this);
+                arena.setLayoutParams(new LinearLayout.LayoutParams(-1,250));
+                arena.setBackgroundColor(Color.parseColor("#1a1a3a"));
+                main.addView(arena);
+                
+                // Log
+                logText = new TextView(this);
+                logText.setText("Sentuh tombol untuk menyerang!");
+                logText.setTextSize(14);
+                logText.setTextColor(Color.parseColor("#cccccc"));
+                logText.setGravity(17);
+                logText.setPadding(10,10,10,10);
+                main.addView(logText);
+                
+                // Buttons
+                LinearLayout btns = new LinearLayout(this);
+                btns.setOrientation(0);
+                btns.setGravity(17);
+                
+                String[] labels = {"👊 ATK", "⚡ SK1", "💥 SK2", "🌟 ULT"};
+                int[] colors = {0xffff4444, 0xff4488ff, 0xff8844ff, 0xffffaa00};
+                
+                for (int i = 0; i < labels.length; i++) {
+                    Button btn = new Button(this);
+                    btn.setText(labels[i]);
+                    btn.setTextColor(Color.WHITE);
+                    btn.setBackgroundColor(colors[i]);
+                    btn.setTextSize(16);
+                    btn.setPadding(15,10,15,10);
+                    final float dmg = 40 + i * 35;
+                    btn.setOnClickListener(v -> {
+                        if (!over) {
+                            eHP -= dmg;
+                            if (eHP < 0) eHP = 0;
+                            eHPBar.setProgress((int)eHP);
+                            logText.setText("Damage: " + (int)dmg + "  |  Enemy HP: " + (int)eHP);
+                            if (eHP <= 0) {
+                                over = true;
+                                logText.setText("🎉 YOU WIN! 🎉");
+                            }
+                        }
+                    });
+                    btns.addView(btn);
+                }
+                
+                main.addView(btns);
+                
+                setContentView(main);
+                startTimer();
+                startAI();
+            }
+            
+            private void startTimer() {
+                h.postDelayed(new Runnable() {
+                    public void run() {
+                        if (!over) {
+                            time--;
+                            timerText.setText("⏱" + time);
+                            if (time <= 0) {
+                                over = true;
+                                logText.setText("⏰ TIME UP! " + (pHP > eHP ? "YOU WIN!" : "YOU LOSE!"));
+                            } else {
+                                h.postDelayed(this, 1000);
+                            }
+                        }
+                    }
+                }, 1000);
+            }
+            
+            private void startAI() {
+                h.postDelayed(new Runnable() {
+                    public void run() {
+                        if (!over) {
+                            float dmg = 15 + r.nextInt(35);
+                            pHP -= dmg;
+                            if (pHP < 0) pHP = 0;
+                            pHPBar.setProgress((int)pHP);
+                            if (pHP <= 0) {
+                                over = true;
+                                logText.setText("💀 YOU LOSE!");
+                            } else {
+                                h.postDelayed(this, 2000);
+                            }
+                        }
+                    }
+                }, 2000);
+            }
+        }
+        EOF
+        
+        # BUILD
+        gradle wrapper --gradle-version 8.5
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon 2>&1 | tail -30
+        
+        echo ""
+        echo "=== HASIL BUILD ==="
+        find . -name "*.apk" -type f -ls
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: NinjaBattleArena-FINAL
+        path: "**/*.apk"
+        if-no-files-found: error

@@ -2,9 +2,6 @@ name: Build APK
 
 on: workflow_dispatch
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,15 +26,8 @@ jobs:
     
     - name: Create Android Project
       run: |
-        # Project build.gradle
-        cat > build.gradle << 'EOF'
-        plugins {
-            id 'com.android.application' version '8.2.0' apply false
-        }
-        EOF
-        
-        # settings.gradle
-        cat > settings.gradle << 'EOF'
+        # settings.gradle with repositories
+        cat > settings.gradle << 'SETTINGS'
         pluginManagement {
             repositories {
                 google()
@@ -45,13 +35,27 @@ jobs:
                 gradlePluginPortal()
             }
         }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
         rootProject.name = "NinjaBattleArena"
         include ':app'
-        EOF
+        SETTINGS
         
-        # App build.gradle (DENGAN NAMESPACE!)
+        # Root build.gradle
+        cat > build.gradle << 'ROOT'
+        plugins {
+            id 'com.android.application' version '8.2.0' apply false
+        }
+        ROOT
+        
+        # App build.gradle with repositories
         mkdir -p app
-        cat > app/build.gradle << 'EOF'
+        cat > app/build.gradle << 'APP'
         plugins {
             id 'com.android.application'
         }
@@ -71,13 +75,17 @@ jobs:
                 }
             }
         }
-        EOF
+        repositories {
+            google()
+            mavenCentral()
+        }
+        APP
         
-        # AndroidManifest.xml
+        # AndroidManifest
         mkdir -p app/src/main/java/com/ninja/battle
         mkdir -p app/src/main/res/values
         
-        cat > app/src/main/AndroidManifest.xml << 'EOF'
+        cat > app/src/main/AndroidManifest.xml << 'MANIFEST'
         <?xml version="1.0" encoding="utf-8"?>
         <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <application
@@ -85,9 +93,8 @@ jobs:
                 android:allowBackup="true">
                 <activity
                     android:name=".MainActivity"
-                    android:label="Ninja Battle Arena"
-                    android:screenOrientation="landscape"
-                    android:exported="true">
+                    android:exported="true"
+                    android:screenOrientation="landscape">
                     <intent-filter>
                         <action android:name="android.intent.action.MAIN"/>
                         <category android:name="android.intent.category.LAUNCHER"/>
@@ -95,55 +102,56 @@ jobs:
                 </activity>
             </application>
         </manifest>
-        EOF
+        MANIFEST
         
-        # MainActivity.java
-        cat > app/src/main/java/com/ninja/battle/MainActivity.java << 'EOF'
+        # MainActivity
+        cat > app/src/main/java/com/ninja/battle/MainActivity.java << 'JAVA'
         package com.ninja.battle;
         import android.app.Activity;
         import android.os.Bundle;
         import android.widget.TextView;
         import android.widget.LinearLayout;
         import android.graphics.Color;
+        import android.view.Gravity;
         public class MainActivity extends Activity {
             @Override
             protected void onCreate(Bundle saved) {
                 super.onCreate(saved);
-                LinearLayout layout = new LinearLayout(this);
-                layout.setOrientation(LinearLayout.VERTICAL);
-                layout.setBackgroundColor(Color.parseColor("#1a1a2e"));
-                layout.setGravity(17);
-                TextView title = new TextView(this);
-                title.setText("🥷 Ninja Battle Arena");
-                title.setTextSize(28);
-                title.setTextColor(Color.parseColor("#ff6b35"));
-                title.setGravity(17);
-                layout.addView(title);
-                TextView sub = new TextView(this);
-                sub.setText("Game Pertarungan Ninja 2D\n\n🟠 Naruto | 🔵 Sasuke\n🩷 Sakura | ⚪ Kakashi");
-                sub.setTextSize(14);
-                sub.setTextColor(Color.WHITE);
-                sub.setGravity(17);
-                sub.setPadding(0,30,0,0);
-                layout.addView(sub);
-                setContentView(layout);
+                LinearLayout l = new LinearLayout(this);
+                l.setOrientation(LinearLayout.VERTICAL);
+                l.setBackgroundColor(Color.parseColor("#1a1a2e"));
+                l.setGravity(Gravity.CENTER);
+                TextView t = new TextView(this);
+                t.setText("Ninja Battle Arena");
+                t.setTextSize(28);
+                t.setTextColor(Color.parseColor("#ff6b35"));
+                t.setGravity(Gravity.CENTER);
+                l.addView(t);
+                TextView s = new TextView(this);
+                s.setText("\nNaruto | Sasuke | Sakura | Kakashi\n\nGame Pertarungan Ninja 2D\n\nMade in Google Colab");
+                s.setTextSize(14);
+                s.setTextColor(Color.WHITE);
+                s.setGravity(Gravity.CENTER);
+                s.setPadding(0,30,0,0);
+                l.addView(s);
+                setContentView(l);
             }
         }
-        EOF
+        JAVA
         
-        # Resources
-        cat > app/src/main/res/values/strings.xml << 'EOF'
+        # strings.xml
+        cat > app/src/main/res/values/strings.xml << 'XML'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
             <string name="app_name">Ninja Battle Arena</string>
         </resources>
-        EOF
+        XML
         
         # gradle.properties
-        cat > gradle.properties << 'EOF'
+        cat > gradle.properties << 'PROPS'
         android.useAndroidX=true
         org.gradle.jvmargs=-Xmx2048m
-        EOF
+        PROPS
         
         # local.properties
         echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -154,9 +162,9 @@ jobs:
       run: |
         gradle wrapper --gradle-version 8.5
         chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon
-        echo "Checking APK:"
-        find . -name "*.apk" -type f -ls
+        ./gradlew assembleDebug --no-daemon --stacktrace
+        echo "APK location:"
+        find . -name "*.apk" -type f
     
     - name: Upload APK
       uses: actions/upload-artifact@v4

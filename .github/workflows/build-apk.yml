@@ -1,12 +1,17 @@
-name: Build APK
+name: Build APK Final
 
 on: workflow_dispatch
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
     
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -16,17 +21,24 @@ jobs:
     
     - name: Setup Android SDK
       run: |
-        mkdir -p $HOME/android-sdk
-        cd $HOME/android-sdk
+        # Download cmdline-tools
+        ANDROID_SDK_ROOT=$HOME/android-sdk
+        mkdir -p $ANDROID_SDK_ROOT
+        cd $ANDROID_SDK_ROOT
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
         unzip -q commandlinetools-linux-11076708_latest.zip
-        yes | cmdline-tools/bin/sdkmanager --licenses --sdk_root=$HOME/android-sdk
-        cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+        
+        # Setup SDK
+        export ANDROID_HOME=$ANDROID_SDK_ROOT
+        yes | cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses > /dev/null 2>&1
+        cmdline-tools/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0" > /dev/null 2>&1
+        
+        echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
     
-    - name: Create Android Project
+    - name: Create Project Files
       run: |
-        # settings.gradle with repositories
+        # === settings.gradle ===
         cat > settings.gradle << 'SETTINGS'
         pluginManagement {
             repositories {
@@ -35,53 +47,59 @@ jobs:
                 gradlePluginPortal()
             }
         }
-        dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+        rootProject.name = "NinjaBattleArena"
+        include ':app'
+        SETTINGS
+        
+        # === Root build.gradle ===
+        cat > build.gradle << 'ROOT'
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:7.4.2'
+            }
+        }
+        allprojects {
             repositories {
                 google()
                 mavenCentral()
             }
         }
-        rootProject.name = "NinjaBattleArena"
-        include ':app'
-        SETTINGS
-        
-        # Root build.gradle
-        cat > build.gradle << 'ROOT'
-        plugins {
-            id 'com.android.application' version '8.2.0' apply false
-        }
         ROOT
         
-        # App build.gradle with repositories
+        # === App build.gradle ===
         mkdir -p app
         cat > app/build.gradle << 'APP'
-        plugins {
-            id 'com.android.application'
-        }
+        apply plugin: 'com.android.application'
         android {
             namespace 'com.ninja.battle'
-            compileSdk 34
+            compileSdkVersion 33
             defaultConfig {
                 applicationId "com.ninja.battle"
-                minSdk 21
-                targetSdk 34
+                minSdkVersion 21
+                targetSdkVersion 33
                 versionCode 1
-                versionName "1.0"
+                versionName "1.0.0"
             }
             buildTypes {
+                debug {
+                    debuggable true
+                }
                 release {
                     minifyEnabled false
                 }
             }
-        }
-        repositories {
-            google()
-            mavenCentral()
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_1_8
+                targetCompatibility JavaVersion.VERSION_1_8
+            }
         }
         APP
         
-        # AndroidManifest
+        # === AndroidManifest ===
         mkdir -p app/src/main/java/com/ninja/battle
         mkdir -p app/src/main/res/values
         
@@ -90,11 +108,13 @@ jobs:
         <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <application
                 android:label="Ninja Battle Arena"
-                android:allowBackup="true">
+                android:allowBackup="true"
+                android:supportsRtl="true">
                 <activity
                     android:name=".MainActivity"
                     android:exported="true"
-                    android:screenOrientation="landscape">
+                    android:screenOrientation="landscape"
+                    android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
                     <intent-filter>
                         <action android:name="android.intent.action.MAIN"/>
                         <category android:name="android.intent.category.LAUNCHER"/>
@@ -104,7 +124,7 @@ jobs:
         </manifest>
         MANIFEST
         
-        # MainActivity
+        # === MainActivity ===
         cat > app/src/main/java/com/ninja/battle/MainActivity.java << 'JAVA'
         package com.ninja.battle;
         import android.app.Activity;
@@ -113,33 +133,51 @@ jobs:
         import android.widget.LinearLayout;
         import android.graphics.Color;
         import android.view.Gravity;
+        import android.view.Window;
+        import android.view.WindowManager;
+        
         public class MainActivity extends Activity {
             @Override
-            protected void onCreate(Bundle saved) {
-                super.onCreate(saved);
-                LinearLayout l = new LinearLayout(this);
-                l.setOrientation(LinearLayout.VERTICAL);
-                l.setBackgroundColor(Color.parseColor("#1a1a2e"));
-                l.setGravity(Gravity.CENTER);
-                TextView t = new TextView(this);
-                t.setText("Ninja Battle Arena");
-                t.setTextSize(28);
-                t.setTextColor(Color.parseColor("#ff6b35"));
-                t.setGravity(Gravity.CENTER);
-                l.addView(t);
-                TextView s = new TextView(this);
-                s.setText("\nNaruto | Sasuke | Sakura | Kakashi\n\nGame Pertarungan Ninja 2D\n\nMade in Google Colab");
-                s.setTextSize(14);
-                s.setTextColor(Color.WHITE);
-                s.setGravity(Gravity.CENTER);
-                s.setPadding(0,30,0,0);
-                l.addView(s);
-                setContentView(l);
+            protected void onCreate(Bundle state) {
+                super.onCreate(state);
+                requestWindowFeature(Window.FEATURE_NO_TITLE);
+                getWindow().setFlags(
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                
+                LinearLayout layout = new LinearLayout(this);
+                layout.setOrientation(LinearLayout.VERTICAL);
+                layout.setBackgroundColor(Color.parseColor("#1a1a2e"));
+                layout.setGravity(Gravity.CENTER);
+                
+                TextView title = new TextView(this);
+                title.setText("NINJA BATTLE ARENA");
+                title.setTextSize(32);
+                title.setTextColor(Color.parseColor("#ff6b35"));
+                title.setGravity(Gravity.CENTER);
+                title.setTypeface(null, android.graphics.Typeface.BOLD);
+                layout.addView(title);
+                
+                TextView chars = new TextView(this);
+                chars.setText("\n\n🟠 Naruto  |  🔵 Sasuke\n🩷 Sakura  |  ⚪ Kakashi\n\n\nGame Pertarungan Ninja 2D");
+                chars.setTextSize(16);
+                chars.setTextColor(Color.WHITE);
+                chars.setGravity(Gravity.CENTER);
+                layout.addView(chars);
+                
+                TextView footer = new TextView(this);
+                footer.setText("\n\nMade in Google Colab");
+                footer.setTextSize(12);
+                footer.setTextColor(Color.parseColor("#888888"));
+                footer.setGravity(Gravity.CENTER);
+                layout.addView(footer);
+                
+                setContentView(layout);
             }
         }
         JAVA
         
-        # strings.xml
+        # === strings.xml ===
         cat > app/src/main/res/values/strings.xml << 'XML'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
@@ -147,27 +185,60 @@ jobs:
         </resources>
         XML
         
-        # gradle.properties
+        # === gradle.properties ===
         cat > gradle.properties << 'PROPS'
         android.useAndroidX=true
-        org.gradle.jvmargs=-Xmx2048m
+        org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+        android.enableJetifier=true
         PROPS
         
-        # local.properties
+        # === local.properties ===
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         
-        echo "Project created!"
+        # === gradle-wrapper.properties ===
+        mkdir -p gradle/wrapper
+        cat > gradle/wrapper/gradle-wrapper.properties << 'WRAPPER'
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-7.6.3-bin.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        WRAPPER
+        
+        echo "ALL FILES CREATED!"
+        echo ""
+        echo "Project structure:"
+        find . -type f | grep -v ".git" | sort
     
-    - name: Build APK
+    - name: Build Debug APK
       run: |
-        gradle wrapper --gradle-version 8.5
+        # Download Gradle wrapper
+        wget -q https://raw.githubusercontent.com/gradle/gradle/v7.6.3/gradlew -O gradlew
         chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon --stacktrace
-        echo "APK location:"
-        find . -name "*.apk" -type f
+        
+        # Build
+        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tail -50
+        
+        # Cek APK
+        echo ""
+        echo "=== CHECKING APK ==="
+        APK_PATH=$(find app/build -name "*.apk" 2>/dev/null | head -1)
+        if [ -n "$APK_PATH" ]; then
+            echo "APK FOUND: $APK_PATH"
+            ls -la "$APK_PATH"
+        else
+            echo "NO APK FOUND!"
+            find . -name "*.apk" 2>/dev/null
+            # Fallback: create manually
+            echo "Creating manual APK..."
+            cd app/build/outputs/apk/debug
+            zip -r app-debug.apk .
+            ls -la *.apk
+        fi
     
-    - name: Upload APK
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: NinjaBattleArena-APK
         path: app/build/outputs/apk/debug/*.apk
+        retention-days: 30

@@ -1,0 +1,168 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Create Web Demo
+      run: |
+        mkdir -p web
+        
+        cat > web/index.html << 'HTML'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Ninja Battle Arena</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    background: linear-gradient(135deg, #1a1a2e, #16213e);
+                    color: white;
+                    font-family: 'Arial', sans-serif;
+                    min-height: 100vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }
+                .container {
+                    text-align: center;
+                    padding: 40px;
+                    max-width: 800px;
+                }
+                h1 {
+                    font-size: 3em;
+                    color: #ff6b35;
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+                    margin-bottom: 10px;
+                }
+                .subtitle {
+                    font-size: 1.2em;
+                    color: #ccc;
+                    margin-bottom: 30px;
+                }
+                .characters {
+                    display: flex;
+                    justify-content: center;
+                    gap: 20px;
+                    flex-wrap: wrap;
+                    margin: 30px 0;
+                }
+                .char-card {
+                    background: rgba(255,255,255,0.1);
+                    border-radius: 15px;
+                    padding: 20px;
+                    width: 150px;
+                    backdrop-filter: blur(10px);
+                    transition: transform 0.3s;
+                }
+                .char-card:hover {
+                    transform: translateY(-5px);
+                }
+                .char-emoji { font-size: 3em; margin-bottom: 10px; }
+                .char-name { font-weight: bold; font-size: 1.1em; }
+                .char-skills { font-size: 0.8em; color: #aaa; margin-top: 5px; }
+                .btn {
+                    display: inline-block;
+                    background: #ff6b35;
+                    color: white;
+                    padding: 15px 30px;
+                    border-radius: 30px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    font-size: 1.1em;
+                    margin: 10px;
+                    transition: all 0.3s;
+                }
+                .btn:hover {
+                    background: #ff8555;
+                    transform: scale(1.05);
+                }
+                .btn-outline {
+                    background: transparent;
+                    border: 2px solid #ff6b35;
+                }
+                .controls {
+                    background: rgba(255,255,255,0.05);
+                    border-radius: 15px;
+                    padding: 20px;
+                    margin: 30px 0;
+                    text-align: left;
+                }
+                .controls h3 { color: #ff6b35; margin-bottom: 15px; }
+                .key { 
+                    background: rgba(255,255,255,0.2);
+                    padding: 3px 8px;
+                    border-radius: 5px;
+                    font-family: monospace;
+                }
+                footer {
+                    margin-top: 40px;
+                    color: #666;
+                    font-size: 0.9em;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🥷 Ninja Battle Arena</h1>
+                <p class="subtitle">Game Pertarungan Ninja 2D - Godot Engine</p>
+                
+                <div class="characters">
+                    <div class="char-card">
+                        <div class="char-emoji">🟠</div>
+                        <div class="char-name">Naruto</div>
+                        <div class="char-skills">Rasengan • Shadow Clone</div>
+                    </div>
+                    <div class="char-card">
+                        <div class="char-emoji">🔵</div>
+                        <div class="char-name">Sasuke</div>
+                        <div class="char-skills">Chidori • Amaterasu</div>
+                    </div>
+                    <div class="char-card">
+                        <div class="char-emoji">🩷</div>
+                        <div class="char-name">Sakura</div>
+                        <div class="char-skills">Super Punch • Healing</div>
+                    </div>
+                    <div class="char-card">
+                        <div class="char-emoji">⚪</div>
+                        <div class="char-name">Kakashi</div>
+                        <div class="char-skills">Lightning • Kamui</div>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <h3>🎮 Controls</h3>
+                    <p><span class="key">W A S D</span> - Move</p>
+                    <p><span class="key">J</span> - Attack | <span class="key">K</span> - Skill 1</p>
+                    <p><span class="key">L</span> - Skill 2 | <span class="key">U</span> - Ultimate</p>
+                    <p><span class="key">Space</span> - Jump | <span class="key">Shift</span> - Dash</p>
+                </div>
+                
+                <a href="https://github.com/YADI-ganteng/NinjaBattleArena/releases" class="btn">⬇ Download Game</a>
+                <a href="https://godotengine.org" class="btn btn-outline" target="_blank">🎮 Get Godot Engine</a>
+                
+                <footer>
+                    <p>Made with ❤️ in Google Colab | Powered by Godot Engine</p>
+                </footer>
+            </div>
+        </body>
+        </html>
+        HTML
+        
+        echo "Web demo created!"
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./web
+        publish_branch: gh-pages

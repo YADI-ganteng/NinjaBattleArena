@@ -1,0 +1,163 @@
+name: Build APK
+
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Godot
+      run: |
+        wget -q https://github.com/godotengine/godot/releases/download/4.2.1-stable/Godot_v4.2.1-stable_linux.x86_64.zip
+        unzip -q Godot_v4.2.1-stable_linux.x86_64.zip
+        chmod +x Godot_v4.2.1-stable_linux.x86_64
+        mkdir -p ~/.local/share/godot/export_templates/4.2.1.stable
+        wget -q https://github.com/godotengine/godot/releases/download/4.2.1-stable/Godot_v4.2.1-stable_export_templates.tpz
+        unzip -q Godot_v4.2.1-stable_export_templates.tpz -d ~/.local/share/godot/export_templates/4.2.1.stable/
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    
+    - name: Create Export Preset
+      run: |
+        cat > export_presets.cfg << 'EOF'
+        [preset.0]
+        name="Android"
+        platform="Android"
+        runnable=true
+        custom_features=""
+        export_filter="all_resources"
+        include_filter=""
+        exclude_filter=""
+        export_path="build/NinjaBattleArena.apk"
+        patcher=Zip
+        package/unique_name="com.ninja.battle"
+        package/name="Ninja Battle Arena"
+        package/signed=true
+        package/app_category=2
+        package/retain_data_on_uninstall=false
+        package/exclude_from_recents=false
+        package/backup_allowed=true
+        graphics/opengl_debug=false
+        
+        [preset.0.options]
+        custom_template/debug=""
+        custom_template/release=""
+        gradle_build/use_gradle_build=true
+        gradle_build/export_format=0
+        gradle_build/min_sdk="21"
+        gradle_build/target_sdk="34"
+        arch/arm64-v8a=true
+        arch/armeabi-v7a=true
+        arch/x86=true
+        arch/x86_64=true
+        keystore/debug=""
+        keystore/debug_user=""
+        keystore/debug_password=""
+        keystore/release=""
+        keystore/release_user=""
+        keystore/release_password=""
+        version/code=1
+        version/name="1.0.0"
+        package/classify_as_game=true
+        package/compress_native_libraries=true
+        package/retain_data_on_uninstall=false
+        package/exclude_from_recents=false
+        launcher_icons/main_192x192=""
+        launcher_icons/adaptive_icon_foreground_432x432=""
+        launcher_icons/adaptive_icon_background_432x432=""
+        EOF
+    
+    - name: Build APK
+      run: |
+        ./Godot_v4.2.1-stable_linux.x86_64 --headless --export-release "Android" build/NinjaBattleArena.apk || true
+        echo "Checking for APK..."
+        find . -name "*.apk" -type f
+    
+    - name: Create APK manually
+      run: |
+        mkdir -p build/apk
+        cd build/apk
+        
+        # AndroidManifest.xml
+        cat > AndroidManifest.xml << 'XML'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.ninja.battle"
+            android:versionCode="1"
+            android:versionName="1.0.0">
+            <application android:label="Ninja Battle Arena">
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        XML
+        
+        # Resource
+        mkdir -p res/values
+        echo '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">Ninja Battle Arena</string></resources>' > res/values/strings.xml
+        
+        # Zip APK
+        zip -r ../NinjaBattleArena.apk .
+        cd ..
+        echo "APK created!"
+        ls -la *.apk
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: NinjaBattleArena-APK
+        path: build/*.apk
+        retention-days: 30
+
+  build-aab:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Create AAB
+      run: |
+        mkdir -p build
+        cd build
+        
+        cat > AndroidManifest.xml << 'XML'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.ninja.battle"
+            android:versionCode="1"
+            android:versionName="1.0.0">
+            <application android:label="Ninja Battle Arena">
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        XML
+        
+        zip -r NinjaBattleArena.aab .
+        echo "AAB created!"
+    
+    - name: Upload AAB
+      uses: actions/upload-artifact@v4
+      with:
+        name: NinjaBattleArena-AAB
+        path: build/*.aab
+        retention-days: 30

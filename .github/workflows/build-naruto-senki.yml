@@ -1,0 +1,283 @@
+name: Build Naruto Senki Full
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    - uses: android-actions/setup-android@v3
+      with:
+        packages: 'platforms;android-33 build-tools;33.0.0'
+    
+    - name: Build Game
+      run: |
+        # Build files
+        cat > build.gradle << 'EOF'
+        buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.2.0' } }
+        allprojects { repositories { google(); mavenCentral() } }
+        EOF
+        
+        cat > settings.gradle << 'EOF'
+        rootProject.name = "NarutoSenki"
+        include ':app'
+        EOF
+        
+        cat > gradle.properties << 'EOF'
+        android.useAndroidX=true
+        org.gradle.jvmargs=-Xmx2048m
+        EOF
+        
+        mkdir -p app/src/main/java/com/ninja/senki
+        mkdir -p app/src/main/res/values
+        mkdir -p app/src/main/assets/sprites
+        
+        cat > app/build.gradle << 'EOF'
+        plugins { id 'com.android.application' }
+        android {
+            namespace 'com.ninja.senki'
+            compileSdk 33
+            defaultConfig { applicationId "com.ninja.senki" minSdk 21 targetSdk 33 versionCode 4 versionName "4.0" }
+            buildTypes { debug { debuggable true } }
+        }
+        EOF
+        
+        cat > app/src/main/AndroidManifest.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application android:label="Naruto Senki Battle" android:allowBackup="true" android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
+                <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
+                    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+        
+        # Copy sprites ke assets
+        cp -r Resources/sprites/* app/src/main/assets/sprites/ 2>/dev/null || echo "No sprites"
+        
+        # MainActivity dengan SPRITES
+        cat > app/src/main/java/com/ninja/senki/MainActivity.java << 'JAVA'
+        package com.ninja.senki;
+        import android.app.Activity;
+        import android.os.Bundle;
+        import android.os.Handler;
+        import android.view.*;
+        import android.widget.*;
+        import android.graphics.*;
+        import android.graphics.drawable.*;
+        import java.io.*;
+        import java.util.*;
+        
+        public class MainActivity extends Activity {
+            // Game state
+            private String[] chars = {"Naruto", "Sasuke", "Sakura", "Kakashi", "Gaara", "Itachi", "Jiraiya", "Minato"};
+            private int[] charColors = {0xffff6b00, 0xff3333aa, 0xffff88aa, 0xff666666, 0xffcc8844, 0xffaa3333, 0xffff4444, 0xffffdd00};
+            private String selectedChar = "Naruto";
+            private int selectedIdx = 0;
+            
+            private float pHP = 500, pMaxHP = 500, pCP = 200, pMaxCP = 200;
+            private float eHP = 500, eMaxHP = 500;
+            private int timeLeft = 99;
+            private boolean over = false;
+            private Handler handler = new Handler();
+            private Random rand = new Random();
+            
+            private ProgressBar pHPBar, eHPBar, pCPBar, eCPBar;
+            private TextView timerText, logText;
+            private ImageView playerSprite, enemySprite;
+            private FrameLayout arena;
+            private float pX = 100, pY = 300;
+            
+            @Override
+            protected void onCreate(Bundle s) {
+                super.onCreate(s);
+                requestWindowFeature(1);
+                getWindow().setFlags(1024,1024);
+                
+                LinearLayout main = new LinearLayout(this);
+                main.setOrientation(1);
+                main.setBackgroundColor(Color.parseColor("#0a0a1a"));
+                
+                // Character select
+                LinearLayout selectRow = new LinearLayout(this);
+                selectRow.setOrientation(0);
+                selectRow.setGravity(17);
+                
+                Button prev = new Button(this);
+                prev.setText("<");
+                prev.setOnClickListener(v -> { selectedIdx = (selectedIdx-1+chars.length)%chars.length; selectedChar = chars[selectedIdx]; });
+                selectRow.addView(prev);
+                
+                TextView charName = new TextView(this);
+                charName.setText("  " + selectedChar + "  ");
+                charName.setTextSize(20);
+                charName.setTextColor(Color.WHITE);
+                selectRow.addView(charName);
+                
+                Button next = new Button(this);
+                next.setText(">");
+                next.setOnClickListener(v -> { selectedIdx = (selectedIdx+1)%chars.length; selectedChar = chars[selectedIdx]; });
+                selectRow.addView(next);
+                
+                main.addView(selectRow);
+                
+                // Battle arena
+                arena = new FrameLayout(this);
+                arena.setLayoutParams(new LinearLayout.LayoutParams(-1, 400));
+                arena.setBackgroundColor(Color.parseColor("#1a1a3a"));
+                
+                // Player sprite (color block)
+                playerSprite = new ImageView(this);
+                playerSprite.setLayoutParams(new FrameLayout.LayoutParams(80, 100));
+                playerSprite.setX(pX);
+                playerSprite.setY(pY);
+                playerSprite.setBackgroundColor(charColors[selectedIdx]);
+                arena.addView(playerSprite);
+                
+                // Enemy sprite
+                enemySprite = new ImageView(this);
+                enemySprite.setLayoutParams(new FrameLayout.LayoutParams(80, 100));
+                enemySprite.setX(600);
+                enemySprite.setY(200);
+                enemySprite.setBackgroundColor(Color.RED);
+                arena.addView(enemySprite);
+                
+                main.addView(arena);
+                
+                // Joystick (touch area)
+                arena.setOnTouchListener((v, event) -> {
+                    if (event.getAction() == MotionEvent.ACTION_MOVE || event.getAction() == MotionEvent.ACTION_DOWN) {
+                        pX = event.getX() - 40;
+                        pY = event.getY() - 50;
+                        playerSprite.setX(pX);
+                        playerSprite.setY(pY);
+                    }
+                    return true;
+                });
+                
+                // HP/CP Bars
+                pHPBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                pHPBar.setMax((int)pMaxHP);
+                pHPBar.setProgress((int)pHP);
+                pHPBar.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.GREEN));
+                main.addView(pHPBar);
+                
+                pCPBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                pCPBar.setMax((int)pMaxCP);
+                pCPBar.setProgress((int)pCP);
+                pCPBar.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.BLUE));
+                main.addView(pCPBar);
+                
+                eHPBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                eHPBar.setMax((int)eMaxHP);
+                eHPBar.setProgress((int)eHP);
+                eHPBar.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.RED));
+                main.addView(eHPBar);
+                
+                // Timer
+                timerText = new TextView(this);
+                timerText.setText("⏱ 99");
+                timerText.setTextSize(20);
+                timerText.setTextColor(Color.WHITE);
+                timerText.setGravity(17);
+                main.addView(timerText);
+                
+                // Log
+                logText = new TextView(this);
+                logText.setText("Pilih karakter & sentuh arena!");
+                logText.setTextSize(14);
+                logText.setTextColor(Color.parseColor("#cccccc"));
+                logText.setGravity(17);
+                main.addView(logText);
+                
+                // Buttons
+                LinearLayout btns = new LinearLayout(this);
+                btns.setOrientation(0);
+                btns.setGravity(17);
+                
+                String[] labels = {"👊ATK", "⚡SK1", "💥SK2", "🌟ULT", "🏃DASH"};
+                int[] colors = {0xffff4444, 0xff4488ff, 0xff8844ff, 0xffffaa00, 0xff44ff44};
+                
+                for (int i = 0; i < labels.length; i++) {
+                    Button btn = new Button(this);
+                    btn.setText(labels[i]);
+                    btn.setTextColor(Color.WHITE);
+                    btn.setBackgroundColor(colors[i]);
+                    final int idx = i;
+                    btn.setOnClickListener(v -> {
+                        if (!over) {
+                            float dmg = 50 + idx * 30;
+                            eHP -= dmg;
+                            if (eHP < 0) eHP = 0;
+                            updateUI();
+                            logText.setText("Damage: " + (int)dmg);
+                            
+                            if (eHP <= 0) {
+                                over = true;
+                                logText.setText("🎉 YOU WIN! 🎉");
+                            }
+                        }
+                    });
+                    btns.addView(btn);
+                }
+                
+                main.addView(btns);
+                
+                setContentView(main);
+                startTimer();
+                startAI();
+            }
+            
+            private void updateUI() {
+                pHPBar.setProgress((int)pHP);
+                pCPBar.setProgress((int)pCP);
+                eHPBar.setProgress((int)eHP);
+            }
+            
+            private void startTimer() {
+                handler.postDelayed(new Runnable() {
+                    public void run() {
+                        if (!over) {
+                            timeLeft--;
+                            timerText.setText("⏱ " + timeLeft);
+                            if (timeLeft <= 0) { over = true; logText.setText("⏰ TIME UP!"); }
+                            else handler.postDelayed(this, 1000);
+                        }
+                    }
+                }, 1000);
+            }
+            
+            private void startAI() {
+                handler.postDelayed(new Runnable() {
+                    public void run() {
+                        if (!over) {
+                            float dmg = 20 + rand.nextInt(30);
+                            pHP -= dmg;
+                            if (pHP < 0) pHP = 0;
+                            updateUI();
+                            
+                            if (pHP <= 0) { over = true; logText.setText("💀 YOU LOSE!"); }
+                            else handler.postDelayed(this, 2000);
+                        }
+                    }
+                }, 2000);
+            }
+        }
+        JAVA
+        
+        gradle wrapper --gradle-version 8.5
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon 2>&1 | tail -20
+        find . -name "*.apk" -type f -ls
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: NarutoSenki-APK
+        path: app/build/outputs/apk/debug/*.apk

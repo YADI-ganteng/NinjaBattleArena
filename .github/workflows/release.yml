@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Package
+      run: zip -r NinjaBattleArena-Godot.zip . -x ".git/*" ".github/*"
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: NinjaBattleArena-Godot.zip
+        name: Release ${{ github.ref_name }}
+        body: |
+          ## 🎮 Ninja Battle Arena ${{ github.ref_name }}
+          
+          ### 🆕 Godot Version!
+          
+          ### 📦 Download:
+          - **NinjaBattleArena-Godot.zip** - Full source code
+          
+          ### 🎮 How to Play:
+          1. Download & install [Godot Engine](https://godotengine.org)
+          2. Extract this zip
+          3. Open `project.godot` in Godot
+          4. Press **F5** to play!
+          
+          ### 👤 Characters:
+          - 🟠 Naruto | 🔵 Sasuke
+          - 🩷 Sakura | ⚪ Kakashi
+          
+          ### 🎮 Controls:
+          - WASD: Move
+          - J: Attack | K/L: Skills
+          - U: Ultimate
+          - Space: Jump | Shift: Dash
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

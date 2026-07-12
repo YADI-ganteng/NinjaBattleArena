@@ -1,9 +1,12 @@
-name: Godot Build
+name: Package Game
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   package:
@@ -13,25 +16,11 @@ jobs:
     
     - name: Package Game
       run: |
-        echo "Packaging Ninja Battle Arena (Godot)..."
-        zip -r NinjaBattleArena-Godot.zip . -x ".git/*" ".github/*"
-        echo "Done!"
-        ls -la *.zip
+        zip -r NinjaBattleArena.zip . -x ".git/*" ".github/*"
+        echo "Package created!"
     
-    - name: Upload Game Package
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: NinjaBattleArena-Godot
-        path: NinjaBattleArena-Godot.zip
-    
-    - name: Upload Sprites
-      uses: actions/upload-artifact@v4
-      with:
-        name: Game-Sprites
-        path: sprites/
-    
-    - name: Upload Scripts
-      uses: actions/upload-artifact@v4
-      with:
-        name: Game-Scripts
-        path: scripts/
+        name: NinjaBattleArena
+        path: NinjaBattleArena.zip

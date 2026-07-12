@@ -1,4 +1,4 @@
-name: Build Real APK
+name: Build APK
 
 on: workflow_dispatch
 
@@ -19,46 +19,70 @@ jobs:
     
     - name: Setup Android SDK
       run: |
-        mkdir -p $HOME/android-sdk/cmdline-tools
-        cd $HOME/android-sdk/cmdline-tools
+        mkdir -p $HOME/android-sdk
+        cd $HOME/android-sdk
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
         unzip -q commandlinetools-linux-11076708_latest.zip
-        mv cmdline-tools latest
-        export ANDROID_HOME=$HOME/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-        echo "PATH=$PATH" >> $GITHUB_ENV
-        
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        yes | cmdline-tools/bin/sdkmanager --licenses --sdk_root=$HOME/android-sdk
+        cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
     
     - name: Create Android Project
       run: |
-        # Buat struktur Android project
-        mkdir -p app/src/main/java/com/ninja/battle
-        mkdir -p app/src/main/res/values
-        mkdir -p app/src/main/res/drawable
-        mkdir -p app/src/main/assets
+        # Project build.gradle
+        cat > build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application' version '8.2.0' apply false
+        }
+        EOF
         
-        # Copy game assets
-        cp -r sprites/* app/src/main/assets/ 2>/dev/null || true
+        # settings.gradle
+        cat > settings.gradle << 'EOF'
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        rootProject.name = "NinjaBattleArena"
+        include ':app'
+        EOF
+        
+        # App build.gradle (DENGAN NAMESPACE!)
+        mkdir -p app
+        cat > app/build.gradle << 'EOF'
+        plugins {
+            id 'com.android.application'
+        }
+        android {
+            namespace 'com.ninja.battle'
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.ninja.battle"
+                minSdk 21
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+            buildTypes {
+                release {
+                    minifyEnabled false
+                }
+            }
+        }
+        EOF
         
         # AndroidManifest.xml
+        mkdir -p app/src/main/java/com/ninja/battle
+        mkdir -p app/src/main/res/values
+        
         cat > app/src/main/AndroidManifest.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-            package="com.ninja.battle"
-            android:versionCode="1"
-            android:versionName="1.0">
-            
-            <uses-permission android:name="android.permission.INTERNET"/>
-            
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <application
                 android:label="Ninja Battle Arena"
-                android:icon="@drawable/icon"
-                android:allowBackup="true"
-                android:theme="@style/Theme.AppCompat">
-                
+                android:allowBackup="true">
                 <activity
                     android:name=".MainActivity"
                     android:label="Ninja Battle Arena"
@@ -76,115 +100,43 @@ jobs:
         # MainActivity.java
         cat > app/src/main/java/com/ninja/battle/MainActivity.java << 'EOF'
         package com.ninja.battle;
-        
         import android.app.Activity;
         import android.os.Bundle;
         import android.widget.TextView;
         import android.widget.LinearLayout;
         import android.graphics.Color;
-        import android.view.Gravity;
-        
         public class MainActivity extends Activity {
             @Override
-            protected void onCreate(Bundle savedInstanceState) {
-                super.onCreate(savedInstanceState);
-                
+            protected void onCreate(Bundle saved) {
+                super.onCreate(saved);
                 LinearLayout layout = new LinearLayout(this);
                 layout.setOrientation(LinearLayout.VERTICAL);
                 layout.setBackgroundColor(Color.parseColor("#1a1a2e"));
-                layout.setGravity(Gravity.CENTER);
-                
+                layout.setGravity(17);
                 TextView title = new TextView(this);
                 title.setText("🥷 Ninja Battle Arena");
                 title.setTextSize(28);
                 title.setTextColor(Color.parseColor("#ff6b35"));
-                title.setGravity(Gravity.CENTER);
+                title.setGravity(17);
                 layout.addView(title);
-                
-                TextView subtitle = new TextView(this);
-                subtitle.setText("Game Pertarungan Ninja 2D");
-                subtitle.setTextSize(16);
-                subtitle.setTextColor(Color.WHITE);
-                subtitle.setGravity(Gravity.CENTER);
-                subtitle.setPadding(0, 20, 0, 50);
-                layout.addView(subtitle);
-                
-                TextView chars = new TextView(this);
-                chars.setText("🟠 Naruto | 🔵 Sasuke\n🩷 Sakura | ⚪ Kakashi");
-                chars.setTextSize(14);
-                chars.setTextColor(Color.parseColor("#cccccc"));
-                chars.setGravity(Gravity.CENTER);
-                layout.addView(chars);
-                
+                TextView sub = new TextView(this);
+                sub.setText("Game Pertarungan Ninja 2D\n\n🟠 Naruto | 🔵 Sasuke\n🩷 Sakura | ⚪ Kakashi");
+                sub.setTextSize(14);
+                sub.setTextColor(Color.WHITE);
+                sub.setGravity(17);
+                sub.setPadding(0,30,0,0);
+                layout.addView(sub);
                 setContentView(layout);
             }
         }
         EOF
         
-        # strings.xml
+        # Resources
         cat > app/src/main/res/values/strings.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
             <string name="app_name">Ninja Battle Arena</string>
         </resources>
-        EOF
-        
-        # themes.xml
-        mkdir -p app/src/main/res/values
-        cat > app/src/main/res/values/themes.xml << 'EOF'
-        <?xml version="1.0" encoding="utf-8"?>
-        <resources>
-            <style name="Theme.AppCompat" parent="android:Theme.Material.NoActionBar">
-            </style>
-        </resources>
-        EOF
-        
-        # build.gradle (app)
-        cat > app/build.gradle << 'EOF'
-        apply plugin: 'com.android.application'
-        
-        android {
-            compileSdkVersion 34
-            defaultConfig {
-                applicationId "com.ninja.battle"
-                minSdkVersion 21
-                targetSdkVersion 34
-                versionCode 1
-                versionName "1.0"
-            }
-            buildTypes {
-                release {
-                    minifyEnabled false
-                }
-                debug {
-                    debuggable true
-                }
-            }
-        }
-        EOF
-        
-        # build.gradle (project)
-        cat > build.gradle << 'EOF'
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:8.2.0'
-            }
-        }
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        EOF
-        
-        # settings.gradle
-        cat > settings.gradle << 'EOF'
-        include ':app'
         EOF
         
         # gradle.properties
@@ -196,24 +148,18 @@ jobs:
         # local.properties
         echo "sdk.dir=$ANDROID_HOME" > local.properties
         
-        echo "Android project created!"
+        echo "Project created!"
     
     - name: Build APK
       run: |
-        # Download Gradle wrapper
         gradle wrapper --gradle-version 8.5
         chmod +x gradlew
-        
-        # Build debug APK
         ./gradlew assembleDebug --no-daemon
-        
-        # Cari APK
-        echo "APK files:"
-        find . -name "*.apk" -type f
+        echo "Checking APK:"
+        find . -name "*.apk" -type f -ls
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: NinjaBattleArena-APK-Real
+        name: NinjaBattleArena-APK
         path: app/build/outputs/apk/debug/*.apk
-        retention-days: 30
